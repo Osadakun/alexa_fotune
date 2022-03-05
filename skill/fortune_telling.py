@@ -6,44 +6,44 @@ from ask_sdk_core.utils import get_slot_value, is_intent_name, is_request_type
 from ask_sdk_model import Response
 from ask_sdk_model.ui import SimpleCard
 
-sb = SkillBuilder()
+import requests
+import config
+from pprint import pprint
+import json
+from datetime import datetime as dt
 
+url = "https://api.notion.com/v1/databases/%s/query" %config.NOTION_DATABASE_ID
+headers = {
+  'Authorization': 'Bearer ' + config.NOTION_ACCESS_TOKEN,
+  'Notion-Version': '2021-08-16',
+  'Content-Type': 'application/json',
+}
+r = requests.post(url, headers=headers)
+
+sb = SkillBuilder()
+today_task = {}                   # タスクが入る，辞書型で管理
 
 @sb.request_handler(can_handle_func=is_request_type("LaunchRequest"))
 def launch_request_handler(handler_input):
-    # type: (HandlerInput) -> Response
-    speech_text = "今日の運勢を占いますか? (はい/いいえ)"
+	# type: (HandlerInput) -> Response
+	inf = notion()
+	today_now = str(dt.now())       # datetime型ではスライス使えない
+	today_now = today_now[:10]      # 年月日だけ欲しいからスライス
+	today_now = dt.strptime(today_now, "%Y-%m-%d")
+	speech_text = today_task.get(today_now)
+	handler_input.response_builder.speak(speech_text).set_card(SimpleCard("Fortune Telling", speech_text)).set_should_end_session(False)
+	return handler_input.response_builder.response
 
-    handler_input.response_builder.speak(speech_text).set_card(
-        SimpleCard("Fortune Telling", speech_text)).set_should_end_session(
-        False)
-    return handler_input.response_builder.response
 
-
-@sb.request_handler(can_handle_func=is_intent_name("FortuneTellingIntent"))
-def fortune_telling_intent_handler(handler_input):
-    # type: (HandlerInput) -> Response
-    yes_no = get_slot_value(handler_input=handler_input, slot_name="continue")
-    if yes_no == 'はい':
-        num = random.randint(0, 9)
-        if num >= 0 and num <= 2:
-            speech_text = "大吉ですねっ!ホッとした。"
-        elif num >= 3 and num <= 6:
-            speech_text = "小吉かぁ。微妙な1日。"
-        else:
-            speech_text = "大凶ですよ。はい残念!"
-        speech_text = '{} 続けますか? (はい/いいえ)'.format(speech_text)
-        end_session = False
-    elif yes_no == 'いいえ':
-        speech_text = "ほな、さいならー"
-        end_session = True
-    else:
-        speech_text = "えっなんて?"
-        end_session = False
-
-    handler_input.response_builder.speak(speech_text).set_card(
-        SimpleCard("Fortune Telling", speech_text)).set_should_end_session(end_session)
-    return handler_input.response_builder.response
+def notion():                     # Notionから情報を持ってくる
+  for i in range(len(r.json()["results"])):
+    name = r.json()['results'][i]['properties']['名前']['title'][0]['plain_text']
+		quantity = r.json()['results'][i]['properties']['日付']['date']['start']
+		quantity = quantity[:10]      # 年月日だけ欲しいからスライス
+		tdate = dt.strptime(quantity, "%Y-%m-%d")
+		# tdate = datetime.strptime(quantity, "%Y-%m-%d")
+		today_task[tdate] = name
+  return today_task
 
 
 @sb.request_handler(can_handle_func=is_intent_name("AMAZON.HelpIntent"))
